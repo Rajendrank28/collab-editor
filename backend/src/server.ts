@@ -25,12 +25,27 @@ const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey123";
 async function startServer() {
   const app = express();
   app.use(express.json());
-  app.use(
-    cors({
-      origin: "http://localhost:5173",
-      credentials: true,
-    })
-  );
+ const allowedOrigins = [
+  "http://localhost:5173",
+  "https://collab-editor-rouge.vercel.app",
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // allow requests with no origin (like Postman, curl)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
+
 
   // Rate limiting middleware
   app.use("/api", speedLimiter);

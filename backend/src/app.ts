@@ -28,7 +28,15 @@ const apiLimiter = rateLimit({
 
 app.use("/api", apiLimiter);
 
-// health route
+// ✅ ADD THIS ROOT ROUTE (fixes Cannot GET / on Render)
+app.get("/", (req: Request, res: Response) => {
+  res.json({
+    status: "ok",
+    message: "Collab Editor backend is running",
+  });
+});
+
+// optional health route
 app.get("/api/health", (req: Request, res: Response) => {
   res.json({ status: "ok" });
 });

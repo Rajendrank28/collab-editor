@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    // Compile modern JS but still good for Node
+    "target": "ES2020",
+    "module": "commonjs",
+
+    // Where our TS files live, and where compiled JS goes
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    // Module resolution
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+
+    // Type checking
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "src/sockets"],
+  "exclude": ["node_modules"]
+}

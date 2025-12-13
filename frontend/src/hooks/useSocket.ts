@@ -15,7 +15,9 @@ interface UseSocketReturn {
   getSocketId: () => string | null;
 }
 
-const SOCKET_URL = "http://localhost:5000";
+// const SOCKET_URL = "http://localhost:5000";
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL as string;
+
 
 export const useSocket = (): UseSocketReturn => {
   const socketRef = useRef<Socket | null>(null);

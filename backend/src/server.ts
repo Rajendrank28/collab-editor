@@ -1,4 +1,3 @@
-// backend/src/server.ts
 import "dotenv/config";
 import express from "express";
 import http from "http";
@@ -15,7 +14,10 @@ import { snippetSocket } from "./sockets/snippetSocket";
 import { redis as redisStorage } from "./config/redis";
 import { startAutoSave } from "./jobs/autoSave";
 
-import apiLimiter, { authLimiter, speedLimiter } from "./middleware/rateLimit";
+import apiLimiter, {
+  authLimiter,
+  speedLimiter,
+} from "./middleware/rateLimit";
 
 const PORT = Number(process.env.PORT || 5000);
 const MONGO_URI = process.env.MONGO_URI || "";
@@ -24,92 +26,134 @@ const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey123";
 
 async function startServer() {
   const app = express();
+
   app.use(express.json());
- const allowedOrigins = [
-  "http://localhost:5173",
-  "https://collab-editor-rouge.vercel.app",
-];
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // allow requests with no origin (like Postman, curl)
-      if (!origin) return callback(null, true);
+  // =========================
+  // CORS (EXPRESS)
+  // =========================
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // allow requests with no origin (Postman, curl)
+        if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+        // allow localhost
+        if (origin.startsWith("http://localhost")) {
+          return callback(null, true);
+        }
 
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-  })
-);
+        // allow all Vercel deployments
+        if (origin.endsWith(".vercel.app")) {
+          return callback(null, true);
+        }
 
+        return callback(new Error("Not allowed by CORS"));
+      },
+      credentials: true,
+    })
+  );
 
-  // Rate limiting middleware
+  // =========================
+  // RATE LIMITING
+  // =========================
   app.use("/api", speedLimiter);
   app.use("/api", apiLimiter);
   app.use("/api/auth", authLimiter);
 
-  // Routes
+  // =========================
+  // ROUTES
+  // =========================
   app.use("/api/snippets", snippetRoutes);
   app.use("/api/auth", authRoutes);
 
-  app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok" });
+  });
 
   const httpServer = http.createServer(app);
 
-  // Socket.IO
+  // =========================
+  // SOCKET.IO
+  // =========================
   const io = new IOServer(httpServer, {
     cors: {
-      origin: "http://localhost:5173",
-      methods: ["GET", "POST"],
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+
+        if (origin.startsWith("http://localhost")) {
+          return callback(null, true);
+        }
+
+        if (origin.endsWith(".vercel.app")) {
+          return callback(null, true);
+        }
+
+        return callback(new Error("Not allowed by CORS"));
+      },
       credentials: true,
+      methods: ["GET", "POST"],
     },
     transports: ["websocket", "polling"],
   });
 
-  // Redis adapter
+  // =========================
+  // REDIS SOCKET ADAPTER
+  // =========================
   const pubClient = new Redis(REDIS_URL);
   const subClient = pubClient.duplicate();
+
   await Promise.all([
     new Promise<void>((res) => pubClient.once("ready", () => res())),
     new Promise<void>((res) => subClient.once("ready", () => res())),
   ]);
+
   io.adapter(createAdapter(pubClient, subClient));
   console.log("🔁 Socket.IO adapter (Redis) configured");
 
-  // Socket handshake JWT verification
+  // =========================
+  // SOCKET AUTH (JWT)
+  // =========================
   io.use((socket, next) => {
     try {
-      // Accept token via socket.handshake.auth.token (client sets auth: { token } )
       const token = socket.handshake.auth?.token || null;
+
       if (!token) {
-        console.warn("Socket connection rejected: no token provided");
+        console.warn("Socket rejected: no token");
         return next(new Error("Authentication error: token required"));
       }
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { userId?: string; username?: string };
-        // Store user info on socket.data for handlers
-        (socket as any).data = { ...(socket as any).data, userId: decoded.userId, username: decoded.username || null };
-        return next();
-      } catch (err) {
-        console.warn("Socket connection rejected: invalid token");
-        return next(new Error("Authentication error: invalid token"));
-      }
+
+      const decoded = jwt.verify(token, JWT_SECRET) as {
+        userId?: string;
+        username?: string;
+      };
+
+      (socket as any).data = {
+        userId: decoded.userId,
+        username: decoded.username || null,
+      };
+
+      next();
     } catch (err) {
-      console.error("Socket auth middleware error", err);
-      return next(new Error("Authentication error"));
+      console.warn("Socket rejected: invalid token");
+      next(new Error("Authentication error"));
     }
   });
 
   io.on("connection", (socket) => {
-    console.log("🟢 socket connected:", socket.id, "user:", (socket as any).data?.username ?? (socket as any).data?.userId);
+    console.log(
+      "🟢 socket connected:",
+      socket.id,
+      "user:",
+      (socket as any).data?.username ?? (socket as any).data?.userId
+    );
+
     snippetSocket(io, socket);
   });
 
-  // MongoDB connect
+  // =========================
+  // MONGODB
+  // =========================
   try {
     await mongoose.connect(MONGO_URI);
     console.log("✅ MongoDB connected");
@@ -117,17 +161,27 @@ app.use(
     console.error("❌ MongoDB connection error:", err);
   }
 
+  // =========================
+  // REDIS
+  // =========================
   redisStorage.on("connect", () => console.log("🔌 Redis connected"));
   redisStorage.on("error", (err) => console.error("❌ Redis error:", err));
 
-  // start auto-save job
+  // =========================
+  // AUTO SAVE JOB
+  // =========================
   const autoSaveHandle = startAutoSave(redisStorage, 30_000);
 
+  // =========================
+  // START SERVER
+  // =========================
   httpServer.listen(PORT, () => {
     console.log(`🚀 Server listening on port ${PORT}`);
   });
 
-  // graceful shutdown
+  // =========================
+  // GRACEFUL SHUTDOWN
+  // =========================
   const shutdown = async () => {
     console.log("🛑 Shutting down...");
     try {

@@ -12,9 +12,6 @@ A full-stack real-time collaborative code editor similar to CodePen/JSFiddle, wh
 [Backend API Health Check](https://collab-editor-backend-b1vx.onrender.com/api/health)
 
 
-## Demo Video
-
-[Watch Demo Video (Google Drive)](https://drive.google.com/file/d/14-iEA0RFM16T1LevXvg01qGvZDIrrP_M/view?usp=sharing)
 
 ---
 
